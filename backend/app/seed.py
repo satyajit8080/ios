@@ -1,18 +1,19 @@
 """Bootstrap: create tables, seed badges, challenges, a food library and an admin account.
-
+ 
 Usage: python -m app.seed [admin_email] [admin_password]
 """
+import os
 import sys
 from datetime import date
-
+ 
 from sqlalchemy import select
-
+ 
 from app.api.v1.challenges import seed_challenges
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine
 from app.models import Base, Food, ReminderSetting, User
 from app.services.gamification import seed_badges
-
+ 
 FOODS = [
     ("Chicken breast, grilled", None, "100 g", 100, 165, 31.0, 0.0, 3.6, 0.0, 0.0),
     ("Salmon fillet, baked", None, "100 g", 100, 208, 20.4, 0.0, 13.4, 0.0, 0.0),
@@ -45,18 +46,23 @@ FOODS = [
     ("Quinoa, cooked", None, "150 g", 150, 180, 6.6, 31.5, 2.9, 3.9, 1.3),
     ("Dark chocolate 85%", None, "20 g", 20, 120, 2.0, 6.0, 10.0, 2.4, 3.0),
 ]
-
-
+ 
+ 
 def main() -> None:
-    email = sys.argv[1] if len(sys.argv) > 1 else "admin@awlc.app"
-    password = sys.argv[2] if len(sys.argv) > 2 else "ChangeMe123!"
-
+    # Precedence: command-line args, then environment, then a safe default.
+    # Hosted platforms run this with no arguments, so ADMIN_EMAIL and
+    # ADMIN_PASSWORD are the path that actually matters in production.
+    email = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("ADMIN_EMAIL", "admin@awlc.app")
+    password = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("ADMIN_PASSWORD", "ChangeMe123!")
+ 
+    # Alembic owns the schema. This is a safety net for a fresh database where
+    # migrations have not been applied yet; it never drops or alters anything.
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         seed_badges(db)
         seed_challenges(db)
-
+ 
         existing = {f.name for f in db.scalars(select(Food)).all()}
         for name, brand, label, grams, kcal, protein, carbs, fat, fiber, sugar in FOODS:
             if name in existing:
@@ -69,7 +75,7 @@ def main() -> None:
                 )
             )
         db.commit()
-
+ 
         admin = db.scalar(select(User).where(User.email == email))
         if admin is None:
             admin = User(
@@ -95,11 +101,11 @@ def main() -> None:
             db.add(admin)
             db.commit()
             print(f"admin ensured: {email}")
-
+ 
         print(f"foods: {db.scalar(select(__import__('sqlalchemy').func.count(Food.id)))}")
     finally:
         db.close()
-
-
+ 
+ 
 if __name__ == "__main__":
     main()
