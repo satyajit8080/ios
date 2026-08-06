@@ -1,7 +1,7 @@
 import Foundation
 import HealthKit
 import Observation
-
+ 
 @MainActor
 @Observable
 final class HealthKitManager {
@@ -11,13 +11,13 @@ final class HealthKitManager {
         case authorized
         case denied
     }
-
+ 
     var status: Status = .notRequested
     var lastSync: Date?
     var syncError: String?
-
+ 
     private let store = HKHealthStore()
-
+ 
     private var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = []
         if let steps = HKQuantityType.quantityType(forIdentifier: .stepCount) { types.insert(steps) }
@@ -26,7 +26,7 @@ final class HealthKitManager {
         if let mass = HKQuantityType.quantityType(forIdentifier: .bodyMass) { types.insert(mass) }
         return types
     }
-
+ 
     private var writeTypes: Set<HKSampleType> {
         var types: Set<HKSampleType> = []
         if let mass = HKQuantityType.quantityType(forIdentifier: .bodyMass) { types.insert(mass) }
@@ -34,7 +34,7 @@ final class HealthKitManager {
         if let energy = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) { types.insert(energy) }
         return types
     }
-
+ 
     func requestAuthorization() async {
         guard HKHealthStore.isHealthDataAvailable() else {
             status = .unavailable
@@ -48,27 +48,27 @@ final class HealthKitManager {
             syncError = "Health access wasn't granted. You can still log steps manually."
         }
     }
-
+ 
     /// Pulls the last `days` of step data and pushes it to the API.
     @discardableResult
     func syncSteps(days: Int = 30) async -> StepStats? {
         guard HKHealthStore.isHealthDataAvailable(),
               let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) else { return nil }
-
+ 
         let calendar = Calendar.current
         let end = calendar.startOfDay(for: Date()).addingTimeInterval(86_400)
         guard let start = calendar.date(byAdding: .day, value: -days, to: calendar.startOfDay(for: Date())) else {
             return nil
         }
-
+ 
         async let stepBuckets = collect(type: stepType, unit: .count(), start: start, end: end)
         async let distanceBuckets = collectOptional(identifier: .distanceWalkingRunning, unit: .meter(), start: start, end: end)
         async let energyBuckets = collectOptional(identifier: .activeEnergyBurned, unit: .kilocalorie(), start: start, end: end)
-
+ 
         let steps = await stepBuckets
         let distance = await distanceBuckets
         let energy = await energyBuckets
-
+ 
         let items = steps.map { day, value in
             StepSyncItem(
                 recordedOn: day,
@@ -78,7 +78,7 @@ final class HealthKitManager {
             )
         }
         guard !items.isEmpty else { return nil }
-
+ 
         do {
             let stats: StepStats = try await APIClient.shared.post(
                 "steps/sync", body: StepSyncRequest(items: items, source: "healthkit")
@@ -91,7 +91,7 @@ final class HealthKitManager {
             return nil
         }
     }
-
+ 
     func latestBodyMassKg() async -> Double? {
         guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return nil }
         return await withCheckedContinuation { continuation in
@@ -104,37 +104,37 @@ final class HealthKitManager {
             store.execute(query)
         }
     }
-
+ 
     func writeWeight(_ kilograms: Double, on date: Date = Date()) {
         guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return }
         let quantity = HKQuantity(unit: .gramUnit(with: .kilo), doubleValue: kilograms)
         let sample = HKQuantitySample(type: type, quantity: quantity, start: date, end: date)
         store.save(sample) { _, _ in }
     }
-
+ 
     func writeWater(millilitres: Int, on date: Date = Date()) {
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return }
         let quantity = HKQuantity(unit: .literUnit(with: .milli), doubleValue: Double(millilitres))
         let sample = HKQuantitySample(type: type, quantity: quantity, start: date, end: date)
         store.save(sample) { _, _ in }
     }
-
+ 
     func writeCalories(_ kcal: Double, on date: Date = Date()) {
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
         let quantity = HKQuantity(unit: .kilocalorie(), doubleValue: kcal)
         let sample = HKQuantitySample(type: type, quantity: quantity, start: date, end: date)
         store.save(sample) { _, _ in }
     }
-
+ 
     // MARK: - Statistics collection
-
+ 
     private func collectOptional(
         identifier: HKQuantityTypeIdentifier, unit: HKUnit, start: Date, end: Date
     ) async -> [Date: Double] {
         guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return [:] }
         return await collect(type: type, unit: unit, start: start, end: end)
     }
-
+ 
     private func collect(type: HKQuantityType, unit: HKUnit, start: Date, end: Date) async -> [Date: Double] {
         await withCheckedContinuation { continuation in
             let interval = DateComponents(day: 1)
@@ -160,9 +160,9 @@ final class HealthKitManager {
         }
     }
 }
-
+ 
 // MARK: - Background sync
-
+ 
 extension HealthKitManager {
     /// Registers observer queries so Health can wake the app when new samples land.
     ///
@@ -171,20 +171,20 @@ extension HealthKitManager {
     /// `HealthKit` background-delivery entitlement and the `processing` background mode.
     func startBackgroundSync() {
         guard HKHealthStore.isHealthDataAvailable(), status == .authorized else { return }
-
+ 
         if let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) {
             observe(stepType, frequency: .hourly) { [weak self] in
                 await self?.syncSteps(days: 3)
             }
         }
-
+ 
         if let massType = HKQuantityType.quantityType(forIdentifier: .bodyMass) {
             observe(massType, frequency: .immediate) { [weak self] in
                 await self?.importWeightFromHealth()
             }
         }
     }
-
+ 
     private func observe(
         _ type: HKQuantityType,
         frequency: HKUpdateFrequency,
@@ -193,17 +193,18 @@ extension HealthKitManager {
         let query = HKObserverQuery(sampleType: type, predicate: nil) { _, completionHandler, error in
             // completionHandler must be called even on failure, or HealthKit will
             // keep retrying and eventually stop delivering updates altogether.
-            guard error == nil else {
-                completionHandler()
-                return
-            }
-            Task {
-                await handler()
-                completionHandler()
-            }
+            //
+            // HealthKit's completion block is not Sendable, so it cannot be
+            // captured by a Task directly under Swift 6. Calling it immediately
+            // acknowledges delivery, and the sync then runs detached. HealthKit
+            // only needs the acknowledgement, not the work, before the app is
+            // suspended again.
+            completionHandler()
+            guard error == nil else { return }
+            Task { await handler() }
         }
         store.execute(query)
-
+ 
         store.enableBackgroundDelivery(for: type, frequency: frequency) { success, error in
             if let error, !success {
                 Task { @MainActor [weak self] in
@@ -212,7 +213,7 @@ extension HealthKitManager {
             }
         }
     }
-
+ 
     /// Pulls any weight samples Health has that we haven't logged yet.
     ///
     /// Samples this app wrote are filtered out, otherwise a weigh-in logged in the app
@@ -222,7 +223,7 @@ extension HealthKitManager {
         guard HKHealthStore.isHealthDataAvailable(),
               status == .authorized,
               let massType = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return 0 }
-
+ 
         let calendar = Calendar.current
         let start = calendar.date(byAdding: .day, value: -days, to: calendar.startOfDay(for: Date())) ?? Date()
         let timeRange = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
@@ -230,7 +231,7 @@ extension HealthKitManager {
             notPredicateWithSubpredicate: HKQuery.predicateForObjects(from: HKSource.default())
         )
         let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [timeRange, notFromThisApp])
-
+ 
         let samples: [HKQuantitySample] = await withCheckedContinuation { continuation in
             let query = HKSampleQuery(
                 sampleType: massType,
@@ -242,9 +243,9 @@ extension HealthKitManager {
             }
             store.execute(query)
         }
-
+ 
         guard !samples.isEmpty else { return 0 }
-
+ 
         // One reading per day — the last of the day wins, matching how the backend
         // stores weight (a unique row per user per date).
         var latestPerDay: [Date: HKQuantitySample] = [:]
@@ -253,12 +254,12 @@ extension HealthKitManager {
             if let existing = latestPerDay[day], existing.endDate >= sample.endDate { continue }
             latestPerDay[day] = sample
         }
-
+ 
         var imported = 0
         for (day, sample) in latestPerDay.sorted(by: { $0.key < $1.key }) {
             let kilograms = sample.quantity.doubleValue(for: .gramUnit(with: .kilo))
             guard kilograms > 20, kilograms < 400 else { continue }
-
+ 
             let body: [String: AnyEncodable] = [
                 "weight_kg": AnyEncodable(kilograms),
                 "recorded_on": AnyEncodable(DateFormatter.awlcDay.string(from: day)),
@@ -268,11 +269,11 @@ extension HealthKitManager {
                 imported += 1
             }
         }
-
+ 
         if imported > 0 { lastSync = Date() }
         return imported
     }
-
+ 
     /// Full sync used on launch and on foreground: steps and weight together.
     func syncAll() async {
         _ = await syncSteps(days: 30)
