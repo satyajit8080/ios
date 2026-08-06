@@ -1,5 +1,4 @@
-//
-//  DSGlass.swift
+DSGlass.swift
 //  AI Weight Loss Coach — Design System
 //
 //  Liquid Glass (iOS 26+) behind availability checks, falling back to
@@ -28,13 +27,13 @@
 //  opaque. Always test with it on — it is the single most common
 //  Liquid Glass review failure.
 //
-
+ 
 import SwiftUI
-
+ 
 // MARK: - Glass modifier
-
+ 
 extension View {
-
+ 
     /// Applies Liquid Glass on iOS 26+, `.ultraThinMaterial` below, and a
     /// solid surface when Reduce Transparency is on.
     ///
@@ -60,14 +59,14 @@ extension View {
         modifier(DSGlassModifier(shape: shape, interactive: interactive, tint: tint))
     }
 }
-
+ 
 private struct DSGlassModifier<S: Shape>: ViewModifier {
     let shape: S
     let interactive: Bool
     let tint: Color?
-
+ 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
+ 
     @ViewBuilder
     func body(content: Content) -> some View {
         if reduceTransparency {
@@ -83,7 +82,7 @@ private struct DSGlassModifier<S: Shape>: ViewModifier {
                 .overlay(shape.stroke(DS.Colors.separator, lineWidth: 0.5))
         }
     }
-
+ 
     @available(iOS 26, *)
     private var glass: Glass {
         var result = Glass.regular
@@ -96,18 +95,18 @@ private struct DSGlassModifier<S: Shape>: ViewModifier {
         return result
     }
 }
-
+ 
 // MARK: - Glass container
 //
 // Wrap sibling glass elements so they blend and morph as a group rather
 // than reading as separate panes. Required whenever two or more glass
 // surfaces sit near each other — the tab bar and its floating button,
 // for instance.
-
+ 
 struct DSGlassContainer<Content: View>: View {
     var spacing: CGFloat = DS.Space.lg
     @ViewBuilder var content: () -> Content
-
+ 
     @ViewBuilder
     var body: some View {
         if #available(iOS 26, *) {
@@ -119,16 +118,16 @@ struct DSGlassContainer<Content: View>: View {
         }
     }
 }
-
+ 
 // MARK: - Morphing identity
 //
 // Give two glass elements the same ID inside a container and iOS 26
 // morphs one into the other across a state change. Below iOS 26 this is
 // a no-op and the change is a plain transition.
-
+ 
 extension View {
     @ViewBuilder
-    func dsGlassID(_ id: some Hashable, in namespace: Namespace.ID) -> some View {
+    func dsGlassID(_ id: some Hashable & Sendable, in namespace: Namespace.ID) -> some View {
         if #available(iOS 26, *) {
             self.glassEffectID(id, in: namespace)
         } else {
@@ -136,9 +135,9 @@ extension View {
         }
     }
 }
-
+ 
 // MARK: - Glass button style
-
+ 
 extension View {
     /// System glass button styling on iOS 26+, the standard press
     /// animation below. For toolbar and floating actions only.
@@ -155,12 +154,12 @@ extension View {
         }
     }
 }
-
+ 
 // MARK: - Capability check
 //
 // Useful for deciding layout, not just material — glass surfaces need
 // slightly more breathing room than opaque ones.
-
+ 
 extension DS {
     enum Capability {
         /// True when real Liquid Glass will render.
@@ -173,20 +172,20 @@ extension DS {
         }
     }
 }
-
+ 
 // MARK: - Sheet chrome
 //
 // Sheet backgrounds get glass; sheet CONTENT does not.
-
+ 
 struct DSSheetChrome<Content: View>: View {
     var title: String?
     var onClose: (() -> Void)?
     @ViewBuilder var content: () -> Content
-
+ 
     var body: some View {
         VStack(spacing: 0) {
             DSSheetHandle()
-
+ 
             if title != nil || onClose != nil {
                 HStack {
                     if let title {
@@ -207,7 +206,7 @@ struct DSSheetChrome<Content: View>: View {
                 .padding(.horizontal, DS.Space.gutter)
                 .padding(.vertical, DS.Space.md)
             }
-
+ 
             content()
         }
         .background(DS.Colors.background)
