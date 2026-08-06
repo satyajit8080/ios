@@ -1,4 +1,3 @@
-DSGlass.swift
 //  AI Weight Loss Coach — Design System
 //
 //  Liquid Glass (iOS 26+) behind availability checks, falling back to
