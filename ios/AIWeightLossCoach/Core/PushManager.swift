@@ -4,15 +4,15 @@ import Foundation
 import Observation
 import UIKit
 import UserNotifications
-
+ 
 @MainActor
 @Observable
 final class PushManager: NSObject {
     var isAuthorized = false
     var latestToken: String?
-
+ 
     private let center = UNUserNotificationCenter.current()
-
+ 
     func configureFirebase() {
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()
@@ -20,7 +20,7 @@ final class PushManager: NSObject {
         Messaging.messaging().delegate = self
         center.delegate = self
     }
-
+ 
     func requestAuthorization() async {
         do {
             isAuthorized = try await center.requestAuthorization(options: [.alert, .sound, .badge, .provisional])
@@ -31,12 +31,12 @@ final class PushManager: NSObject {
             isAuthorized = false
         }
     }
-
+ 
     func refreshAuthorizationState() async {
         let settings = await center.notificationSettings()
         isAuthorized = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
     }
-
+ 
     func registerToken(_ token: String) async {
         latestToken = token
         let body: [String: String] = [
@@ -46,22 +46,22 @@ final class PushManager: NSObject {
         ]
         _ = try? await APIClient.shared.postVoid("notifications/devices", body: body)
     }
-
+ 
     func unregisterCurrentToken() async {
         guard let latestToken else { return }
         _ = try? await APIClient.shared.delete("notifications/devices/\(latestToken)")
     }
-
+ 
     /// Local fallback so reminders still fire when push is unavailable.
     func scheduleLocalWaterReminders(intervalMinutes: Int, startHour: Int, endHour: Int) async {
         center.removePendingNotificationRequests(withIdentifiers: waterIdentifiers)
         guard isAuthorized, intervalMinutes > 0 else { return }
-
+ 
         let content = UNMutableNotificationContent()
         content.title = "Time for water"
         content.body = "A glass now keeps you on track for today's goal."
         content.sound = .default
-
+ 
         var hour = startHour
         var index = 0
         while hour <= endHour && index < 8 {
@@ -75,17 +75,17 @@ final class PushManager: NSObject {
             index += 1
         }
     }
-
+ 
     private var waterIdentifiers: [String] { (0..<8).map { "water-\($0)" } }
 }
-
+ 
 extension PushManager: MessagingDelegate {
     nonisolated func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         guard let fcmToken else { return }
         Task { @MainActor in await registerToken(fcmToken) }
     }
 }
-
+ 
 extension PushManager: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -93,13 +93,13 @@ extension PushManager: UNUserNotificationCenterDelegate {
     ) async -> UNNotificationPresentationOptions {
         [.banner, .sound, .badge]
     }
-
+ 
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        await MainActor.run {
-            UIApplication.shared.applicationIconBadgeNumber = 0
-        }
+        // `applicationIconBadgeNumber` is deprecated as of iOS 17; the
+        // notification centre owns the badge count now.
+        try? await UNUserNotificationCenter.current().setBadgeCount(0)
     }
 }
