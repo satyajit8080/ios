@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 import StoreKit
-
+ 
 @MainActor
 @Observable
 final class StoreManager {
@@ -11,12 +11,17 @@ final class StoreManager {
     var purchaseError: String?
     var isPurchasing = false
     var isLoadingProducts = false
-
-    private var updatesTask: Task<Void, Never>?
-
+ 
+    /// Holds the transaction-listener task.
+    ///
+    /// `deinit` is nonisolated and cannot read main-actor state under Swift 6
+    /// strict concurrency, so the task lives in this small reference box rather
+    /// than in a stored property on the actor-isolated class.
+    private let updates = TaskBox()
+ 
     var monthly: Product? { products.first { $0.id == AppConfig.monthlyProductID } }
     var annual: Product? { products.first { $0.id == AppConfig.annualProductID } }
-
+ 
     /// Percent saved by paying annually, rounded down. Nil when both prices aren't loaded.
     var annualSavingPercent: Int? {
         guard let monthly, let annual else { return nil }
@@ -25,10 +30,10 @@ final class StoreManager {
         let saving = (yearAtMonthly - annual.price) / yearAtMonthly * 100
         return Int(truncating: saving as NSDecimalNumber)
     }
-
+ 
     func start() {
-        updatesTask?.cancel()
-        updatesTask = Task { [weak self] in
+        updates.cancel()
+        updates.task = Task { [weak self] in
             for await update in Transaction.updates {
                 guard let self else { return }
                 if case .verified(let transaction) = update {
@@ -42,9 +47,9 @@ final class StoreManager {
             await refreshEntitlements()
         }
     }
-
-    deinit { updatesTask?.cancel() }
-
+ 
+    deinit { updates.cancel() }
+ 
     func loadProducts() async {
         isLoadingProducts = true
         defer { isLoadingProducts = false }
@@ -55,13 +60,13 @@ final class StoreManager {
             purchaseError = "Couldn't load subscription options. Check your connection."
         }
     }
-
+ 
     @discardableResult
     func purchase(_ product: Product) async -> Bool {
         isPurchasing = true
         purchaseError = nil
         defer { isPurchasing = false }
-
+ 
         do {
             let result = try await product.purchase()
             switch result {
@@ -88,7 +93,7 @@ final class StoreManager {
             return false
         }
     }
-
+ 
     func restore() async {
         isPurchasing = true
         defer { isPurchasing = false }
@@ -102,11 +107,11 @@ final class StoreManager {
             purchaseError = error.localizedDescription
         }
     }
-
+ 
     func refreshEntitlements() async {
         var active = false
         var latestExpiry: Date?
-
+ 
         for await entitlement in Transaction.currentEntitlements {
             guard case .verified(let transaction) = entitlement,
                   AppConfig.productIDs.contains(transaction.productID) else { continue }
@@ -116,17 +121,17 @@ final class StoreManager {
                 await submit(transaction)
             }
         }
-
+ 
         isPremium = active
         expiresAt = latestExpiry
-
+ 
         // The server is the source of truth for gating; reconcile with it.
         if let status: SubscriptionStatus = try? await APIClient.shared.get("subscriptions/status") {
             isPremium = status.isPremium
             expiresAt = status.expiresAt
         }
     }
-
+ 
     private func submit(_ transaction: Transaction) async {
         let payload = VerifyPurchaseRequest(
             signedTransaction: nil,
@@ -145,5 +150,35 @@ final class StoreManager {
             // Keep local entitlement so a network blip doesn't lock a paying customer out.
             isPremium = transaction.expirationDate.map { $0 > Date() } ?? isPremium
         }
+    }
+}
+ 
+/// Thread-safe, non-isolated holder for a cancellable task.
+///
+/// Exists so `StoreManager.deinit` can cancel the StoreKit listener without
+/// touching main-actor-isolated storage.
+private final class TaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _task: Task<Void, Never>?
+ 
+    var task: Task<Void, Never>? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _task
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _task = newValue
+        }
+    }
+ 
+    func cancel() {
+        lock.lock()
+        let existing = _task
+        _task = nil
+        lock.unlock()
+        existing?.cancel()
     }
 }
