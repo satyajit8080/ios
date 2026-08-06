@@ -71,16 +71,14 @@ workflows:
  
           keychain initialize
  
-          # `--create` builds a certificate signing request, which requires a
-          # private key. The CLI does not generate one on its own: without it
-          # the fetch fails with "Cannot save Signing Certificates without
-          # certificate private key" and then, because that error is not fatal,
-          # every later step silently operates on an empty certificate list.
-          openssl genrsa -out /tmp/awlc_cert_key.pem 2048
- 
+          # The signing key must be the SAME on every build. Generating a fresh
+          # one per run means the existing certificate never matches, so each
+          # build tries to create another and Apple rejects it with a 409 once
+          # the two-certificate limit is reached. It lives in the
+          # CERTIFICATE_PRIVATE_KEY environment variable instead.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --certificate-key=@file:/tmp/awlc_cert_key.pem \
+            --certificate-key="@env:CERTIFICATE_PRIVATE_KEY" \
             --create
  
           # `--certificate-key` belongs to fetch-signing-files only. Passing it
