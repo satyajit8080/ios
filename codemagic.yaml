@@ -59,21 +59,26 @@ workflows:
       - name: Set build number
         script: |
           cd ios
-          agvtool new-version -all $(($(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID") + 1))
+          # No builds exist yet on a brand-new app record, and the lookup exits
+          # non-zero in that case rather than returning 0. Default to 0 so the
+          # first build becomes number 1.
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID" 2>/dev/null || echo "0")
+          agvtool new-version -all $((LATEST + 1))
  
-      - name: Fetch signing files
+      - name: Set up code signing
         script: |
+          # Order matters. `keychain initialize` must run first: when no
+          # distribution certificate exists yet, `--create` generates a new
+          # keypair and needs an initialised keychain to store the private key
+          # in. Fetching first fails with "Cannot save Signing Certificates
+          # without certificate private key".
+          keychain initialize
+ 
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
  
-      - name: Add certificates to keychain
-        script: |
-          keychain initialize
           keychain add-certificates
- 
-      - name: Apply provisioning profiles
-        script: |
           xcode-project use-profiles
  
       - name: Build the IPA
