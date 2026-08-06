@@ -83,16 +83,18 @@ workflows:
             --certificate-key=@file:/tmp/awlc_cert_key.pem \
             --create
  
-          keychain add-certificates \
-            --certificate-key=@file:/tmp/awlc_cert_key.pem
+          # `--certificate-key` belongs to fetch-signing-files only. Passing it
+          # here is an unknown argument and argparse exits 2 before the
+          # certificate is ever imported. add-certificates picks up the .p12
+          # that fetch-signing-files already saved to disk.
+          keychain add-certificates
  
           xcode-project use-profiles \
             --project "$XCODE_PROJECT"
  
-          echo "--- Certificates in keychain ---"
-          keychain list-certificates || true
           echo "--- Provisioning profiles on disk ---"
-          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/" || true
+          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/" 2>/dev/null || true
+          ls -la "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/" 2>/dev/null || true
  
       - name: Build the IPA
         script: |
