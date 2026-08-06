@@ -1,5 +1,5 @@
 import Foundation
-
+ 
 enum APIError: LocalizedError, Equatable {
     case unauthorized
     case paymentRequired(String)
@@ -7,7 +7,7 @@ enum APIError: LocalizedError, Equatable {
     case server(String)
     case decoding
     case offline
-
+ 
     var errorDescription: String? {
         switch self {
         case .unauthorized: "Your session ended. Sign in again."
@@ -19,25 +19,25 @@ enum APIError: LocalizedError, Equatable {
         }
     }
 }
-
+ 
 private struct APIErrorBody: Decodable { let detail: String? }
-
+ 
 actor APIClient {
     static let shared = APIClient()
-
+ 
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private var accessToken: String?
     private var refreshToken: String?
     private var refreshTask: Task<Void, Error>?
-
+ 
     init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 45
         config.waitsForConnectivity = true
         session = URLSession(configuration: config)
-
+ 
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let text = try decoder.singleValueContainer().decode(String.self)
@@ -48,68 +48,68 @@ actor APIClient {
                 .init(codingPath: decoder.codingPath, debugDescription: "Unrecognised date \(text)")
             )
         }
-
+ 
         encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .formatted(DateFormatter.awlcDay)
-
+ 
         accessToken = Keychain.read("access")
         refreshToken = Keychain.read("refresh")
     }
-
+ 
     var isSignedIn: Bool { refreshToken != nil }
-
+ 
     func setTokens(access: String, refresh: String) {
         accessToken = access
         refreshToken = refresh
         Keychain.save(access, for: "access")
         Keychain.save(refresh, for: "refresh")
     }
-
+ 
     func clearTokens() {
         accessToken = nil
         refreshToken = nil
         Keychain.delete("access")
         Keychain.delete("refresh")
     }
-
+ 
     func currentRefreshToken() -> String? { refreshToken }
-
+ 
     // MARK: - Requests
-
+ 
     func get<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
         try await send(path: path, method: "GET", query: query, body: Optional<Empty>.none)
     }
-
+ 
     func post<T: Decodable, B: Encodable>(_ path: String, body: B, query: [String: String] = [:]) async throws -> T {
         try await send(path: path, method: "POST", query: query, body: body)
     }
-
+ 
     func post<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
         try await send(path: path, method: "POST", query: query, body: Optional<Empty>.none)
     }
-
+ 
     func patch<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
         try await send(path: path, method: "PATCH", query: [:], body: body)
     }
-
+ 
     @discardableResult
     func delete(_ path: String) async throws -> Bool {
         let _: Empty? = try await sendOptional(path: path, method: "DELETE", query: [:], body: Optional<Empty>.none)
         return true
     }
-
+ 
     @discardableResult
     func postVoid<B: Encodable>(_ path: String, body: B) async throws -> Bool {
         let _: Empty? = try await sendOptional(path: path, method: "POST", query: [:], body: body)
         return true
     }
-
+ 
     @discardableResult
     func postVoid(_ path: String, query: [String: String] = [:]) async throws -> Bool {
         let _: Empty? = try await sendOptional(path: path, method: "POST", query: query, body: Optional<Empty>.none)
         return true
     }
-
+ 
     func upload<T: Decodable>(
         _ path: String,
         imageData: Data,
@@ -124,17 +124,17 @@ actor APIClient {
         body.append("Content-Type: \(mime)\r\n\r\n".data(using: .utf8)!)
         body.append(imageData)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-
+ 
         var request = try makeRequest(path: path, method: "POST", query: query)
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
         return try await perform(request, allowRetry: true)
     }
-
+ 
     // MARK: - Plumbing
-
+ 
     private struct Empty: Codable {}
-
+ 
     private func makeRequest(path: String, method: String, query: [String: String]) throws -> URLRequest {
         var components = URLComponents(
             url: AppConfig.apiBaseURL.appendingPathComponent(path),
@@ -144,7 +144,7 @@ actor APIClient {
             components?.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         guard let url = components?.url else { throw APIError.server("Bad request URL.") }
-
+ 
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -153,7 +153,7 @@ actor APIClient {
         }
         return request
     }
-
+ 
     private func send<T: Decodable, B: Encodable>(
         path: String, method: String, query: [String: String], body: B?
     ) async throws -> T {
@@ -164,7 +164,7 @@ actor APIClient {
         }
         return try await perform(request, allowRetry: true)
     }
-
+ 
     private func sendOptional<T: Decodable, B: Encodable>(
         path: String, method: String, query: [String: String], body: B?
     ) async throws -> T? {
@@ -177,7 +177,7 @@ actor APIClient {
         guard let data, !data.isEmpty else { return nil }
         return try? decoder.decode(T.self, from: data)
     }
-
+ 
     private func perform<T: Decodable>(_ request: URLRequest, allowRetry: Bool) async throws -> T {
         let data = try await performRaw(request, allowRetry: allowRetry) ?? Data()
         do {
@@ -186,7 +186,7 @@ actor APIClient {
             throw APIError.decoding
         }
     }
-
+ 
     private func performRaw(_ request: URLRequest, allowRetry: Bool) async throws -> Data? {
         let data: Data
         let response: URLResponse
@@ -195,9 +195,9 @@ actor APIClient {
         } catch let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
             throw APIError.offline
         }
-
+ 
         guard let http = response as? HTTPURLResponse else { throw APIError.server("No response.") }
-
+ 
         switch http.statusCode {
         case 200...299:
             return data
@@ -217,21 +217,21 @@ actor APIClient {
             throw APIError.server(message(from: data) ?? "Request failed (\(http.statusCode)).")
         }
     }
-
+ 
     private func message(from data: Data) -> String? {
         (try? decoder.decode(APIErrorBody.self, from: data))?.detail
     }
-
+ 
     private func refreshSession() async throws {
         if let refreshTask { return try await refreshTask.value }
         guard let refreshToken else { throw APIError.unauthorized }
-
+ 
         let task = Task<Void, Error> {
             var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("auth/refresh"))
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(["refresh_token": refreshToken])
-
+ 
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 clearTokens()
@@ -245,23 +245,29 @@ actor APIClient {
         try await task.value
     }
 }
-
+ 
+// Foundation's date formatters are documented as thread-safe for formatting and
+// parsing once configured, but they predate Sendable and are not marked as such,
+// so Swift 6 rejects them as shared mutable state. These two are configured once
+// at initialisation and never mutated afterwards, which is exactly the case
+// `nonisolated(unsafe)` exists for. Creating a formatter per call would be safe
+// too, but they are expensive to build and sit on the JSON decoding path.
 extension ISO8601DateFormatter {
-    static let awlcFull: ISO8601DateFormatter = {
+    nonisolated(unsafe) static let awlcFull: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
-
-    static let awlcPlain: ISO8601DateFormatter = {
+ 
+    nonisolated(unsafe) static let awlcPlain: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
 }
-
+ 
 extension DateFormatter {
-    static let awlcDay: DateFormatter = {
+    nonisolated(unsafe) static let awlcDay: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
