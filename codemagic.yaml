@@ -79,7 +79,16 @@ workflows:
             --create
  
           keychain add-certificates
-          xcode-project use-profiles
+ 
+          # Point use-profiles at the project explicitly. Run from the repo
+          # root without --project it does not reliably locate the generated
+          # .xcodeproj, and the build then fails with "requires a provisioning
+          # profile" even though the profile was fetched successfully.
+          xcode-project use-profiles \
+            --project "$XCODE_PROJECT"
+ 
+          echo "--- Fetched signing files ---"
+          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/" || true
  
       - name: Build the IPA
         script: |
@@ -104,3 +113,4 @@ workflows:
         notify:
           success: true
           failure: true
+ 
