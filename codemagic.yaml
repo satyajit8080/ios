@@ -1,116 +1,48 @@
-workflows:
-  ios-testflight:
-    name: AI Weight Loss Coach - TestFlight
-    instance_type: mac_mini_m2
-    max_build_duration: 60
+name: AIWeightLossCoach
+options:
+  bundleIdPrefix: com.awlc
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
  
-    integrations:
-      app_store_connect: AWLC_API_KEY
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Manual signing needs an explicit team. Codemagic's `use-profiles` fills in
+    # PROVISIONING_PROFILE_SPECIFIER and CODE_SIGN_IDENTITY, but it does not set
+    # DEVELOPMENT_TEAM, and without it xcodebuild reports "requires a
+    # provisioning profile" even when a valid profile is installed.
+    DEVELOPMENT_TEAM: 8L42VAKP6D
+    CODE_SIGN_STYLE: Manual
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_STRICT_CONCURRENCY: complete
  
-    environment:
-      groups:
-        - awlc_secrets
-      vars:
-        XCODE_PROJECT: "ios/AIWeightLossCoach.xcodeproj"
-        XCODE_SCHEME: "AIWeightLossCoach"
-        BUNDLE_ID: "com.awlc.coach"
-      xcode: latest
+packages:
+  FirebaseSDK:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: "11.6.0"
  
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: true
- 
-    scripts:
-      - name: Install XcodeGen
-        script: |
-          brew install xcodegen
- 
-      - name: Write GoogleService-Info.plist
-        script: |
-          # Stored as a base64 environment variable so the real Firebase
-          # credentials never sit in the repository.
-          if [ -n "$GOOGLE_SERVICE_INFO_PLIST" ]; then
-            echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode \
-              > ios/AIWeightLossCoach/Resources/GoogleService-Info.plist
-            echo "Wrote GoogleService-Info.plist"
-          else
-            echo "GOOGLE_SERVICE_INFO_PLIST not set - using the repo template."
-          fi
- 
-      - name: Point the app at the live backend
-        script: |
-          # API_BASE_URL is an environment variable in Codemagic so the same
-          # commit can be built against staging or production.
-          if [ -n "$API_BASE_URL" ]; then
-            /usr/libexec/PlistBuddy -c "Set :API_BASE_URL $API_BASE_URL" \
-              ios/AIWeightLossCoach/Resources/Info.plist
-            echo "API_BASE_URL set to $API_BASE_URL"
-          fi
- 
-      - name: Generate the Xcode project
-        script: |
-          cd ios
-          xcodegen generate
- 
-      - name: Set build number
-        script: |
-          cd ios
-          # No builds exist yet on a brand-new app record, and the lookup exits
-          # non-zero in that case rather than returning 0. Default to 0 so the
-          # first build becomes number 1.
-          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID" 2>/dev/null || echo "0")
-          agvtool new-version -all $((LATEST + 1))
- 
-      - name: Set up code signing
-        script: |
-          # Order matters. `keychain initialize` must run first: when no
-          # distribution certificate exists yet, `--create` generates a new
-          # keypair and needs an initialised keychain to store the private key
-          # in. Fetching first fails with "Cannot save Signing Certificates
-          # without certificate private key".
-          keychain initialize
- 
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
- 
-          keychain add-certificates
- 
-          # Point use-profiles at the project explicitly. Run from the repo
-          # root without --project it does not reliably locate the generated
-          # .xcodeproj, and the build then fails with "requires a provisioning
-          # profile" even though the profile was fetched successfully.
-          xcode-project use-profiles \
-            --project "$XCODE_PROJECT"
- 
-          echo "--- Fetched signing files ---"
-          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/" || true
- 
-      - name: Build the IPA
-        script: |
-          xcode-project build-ipa \
-            --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
- 
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-      - build/ios/xcarchive/*.dSYM
- 
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
-      email:
-        recipients:
-          - satyajitdhumal07@gmail.com
-        notify:
-          success: true
-          failure: true
- 
+targets:
+  AIWeightLossCoach:
+    type: application
+    platform: iOS
+    sources:
+      - path: AIWeightLossCoach
+    dependencies:
+      - package: FirebaseSDK
+        product: FirebaseCore
+      - package: FirebaseSDK
+        product: FirebaseMessaging
+      - package: FirebaseSDK
+        product: FirebaseAnalytics
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.awlc.coach
+        INFOPLIST_FILE: AIWeightLossCoach/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AIWeightLossCoach/Resources/AIWeightLossCoach.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+    entitlements:
+      path: AIWeightLossCoach/Resources/AIWeightLossCoach.entitlements
