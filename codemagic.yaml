@@ -109,11 +109,15 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
+        # No `beta_groups` here on purpose. Naming a group that does not yet
+        # exist in App Store Connect fails the publish step after a successful
+        # build, which is a miserable way to lose a 20-minute run. The build
+        # uploads to TestFlight and testers get added from the App Store
+        # Connect UI instead.
       email:
         recipients:
           - satyajitdhumal07@gmail.com
         notify:
           success: true
           failure: true
+ 
