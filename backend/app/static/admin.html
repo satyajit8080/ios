@@ -33,7 +33,7 @@
   input{width:100%;padding:11px 12px;margin-bottom:12px;border-radius:6px;border:1px solid var(--rule);
         background:#0E1826;color:var(--text);font-size:14px;font-family:var(--display)}
   .err{color:var(--down);font-size:13px;min-height:18px;margin-top:8px}
-
+ 
   /* Signature: the beam — KPIs sit on a single ruled measuring bar with tick marks */
   .beam{position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
         gap:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-bottom:30px}
@@ -46,7 +46,7 @@
   .kpi .value.accent{color:var(--amber)}
   .kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
   .kpi .sub .up{color:var(--up)} .kpi .sub .down{color:var(--down)}
-
+ 
   section{margin-bottom:34px}
   h2.sec{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
          margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid var(--rule)}
@@ -78,7 +78,7 @@
   <button class="primary" style="width:100%" onclick="signIn()">Sign in</button>
   <div class="err" id="gateErr"></div>
 </div>
-
+ 
 <div id="app" hidden>
   <header class="bar">
     <h1>Coach Console</h1>
@@ -89,7 +89,7 @@
   </header>
   <main>
     <div class="beam" id="beam"></div>
-
+ 
     <section>
       <h2 class="sec">Trends</h2>
       <div class="grid2">
@@ -97,7 +97,7 @@
         <div class="card"><h3>Revenue per day — 90 days</h3><svg class="chart" id="revenueChart"></svg></div>
       </div>
     </section>
-
+ 
     <section>
       <h2 class="sec">Weekly cohorts</h2>
       <div class="card">
@@ -105,7 +105,7 @@
         <tbody id="retentionBody"></tbody></table>
       </div>
     </section>
-
+ 
     <section>
       <h2 class="sec">Subscriptions</h2>
       <div class="card">
@@ -113,7 +113,7 @@
         <tbody id="subsBody"></tbody></table>
       </div>
     </section>
-
+ 
     <section>
       <h2 class="sec">Users</h2>
       <div class="toolbar">
@@ -128,27 +128,39 @@
     </section>
   </main>
 </div>
-
+ 
 <script>
 const API = '/api/v1';
 let token = sessionStorage.getItem('awlc_admin_token') || '';
 let premiumOnly = false;
-
+ 
 function h(v){ return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function money(v){ return '$' + Number(v || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function num(v){ return Number(v || 0).toLocaleString('en-US'); }
 function day(v){ return v ? new Date(v).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'; }
-
+ 
 async function api(path, options = {}) {
   const res = await fetch(API + path, {
     ...options,
     headers: {'Content-Type':'application/json', ...(token ? {Authorization:'Bearer ' + token} : {}), ...(options.headers||{})}
   });
-  if (res.status === 401 || res.status === 403) { signOut(); throw new Error('Session ended'); }
-  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).detail || 'Request failed');
+ 
+  // A 401 on the login call means bad credentials, not an expired session.
+  // Routing it through the sign-out branch hid the server's actual message and
+  // made a simple typo look like a session problem.
+  const isLogin = path.startsWith('/auth/login');
+ 
+  if (!isLogin && (res.status === 401 || res.status === 403)) {
+    signOut();
+    throw new Error('Session ended');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Request failed (${res.status})`);
+  }
   return res.status === 204 ? null : res.json();
 }
-
+ 
 async function signIn(){
   const err = document.getElementById('gateErr');
   err.textContent = '';
@@ -163,25 +175,25 @@ async function signIn(){
     showApp();
   } catch(e){ err.textContent = e.message; }
 }
-
+ 
 function signOut(){
   token = ''; sessionStorage.removeItem('awlc_admin_token');
   document.getElementById('app').hidden = true;
   document.getElementById('gate').hidden = false;
 }
-
+ 
 function showApp(){
   document.getElementById('gate').hidden = true;
   document.getElementById('app').hidden = false;
   loadAll();
 }
-
+ 
 function kpi(label, value, sub, accent){
   return `<div class="kpi"><div class="label">${h(label)}</div>
     <div class="value${accent ? ' accent':''}">${h(value)}</div>
     <div class="sub">${sub}</div></div>`;
 }
-
+ 
 function sparkline(el, points, color){
   const svg = document.getElementById(el);
   if (!points.length) { svg.innerHTML = '<text x="8" y="66" fill="#8296B2" font-size="12" font-family="Archivo">No data in this window yet.</text>'; return; }
@@ -197,7 +209,7 @@ function sparkline(el, points, color){
      <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
      <text x="${pad}" y="16" fill="#8296B2" font-size="11" font-family="Roboto Mono">peak ${max.toLocaleString('en-US')}</text>`;
 }
-
+ 
 async function loadAll(){
   const o = await api('/admin/overview');
   document.getElementById('envTag').textContent = new Date().toLocaleString('en-US');
@@ -207,34 +219,34 @@ async function loadAll(){
     kpi('Daily active', num(o.users.dau), `${o.users.stickiness_pct}% of monthly actives`) +
     kpi('Total users', num(o.users.total), `<span class="up">+${num(o.users.new_7d)}</span> this week`) +
     kpi('Coach messages', num(o.engagement.coach_messages_7d), 'last 7 days');
-
+ 
   const signups = await api('/admin/signups?days=30');
   sparkline('signupChart', signups.map(r=>({v:r.count})), '#E8A33D');
   const revenue = await api('/admin/revenue?days=90');
   sparkline('revenueChart', revenue.map(r=>({v:r.revenue_usd})), '#4FD1A5');
-
+ 
   const cohorts = await api('/admin/retention');
   document.getElementById('retentionBody').innerHTML = cohorts.map(c=>
     `<tr><td class="mono">${h(c.cohort)}</td><td>${num(c.signups)}</td><td>${num(c.retained_d7)}</td>
      <td><span class="pill ${c.rate_pct >= 40 ? 'on':'off'}">${c.rate_pct}%</span></td></tr>`).join('')
     || '<tr><td colspan="4" class="empty">No cohorts yet.</td></tr>';
-
+ 
   const subs = await api('/admin/subscriptions?limit=50');
   document.getElementById('subsBody').innerHTML = subs.map(s=>
     `<tr><td>${h(s.email)}</td><td class="mono">${h(s.product_id.split('.').pop())}</td>
      <td><span class="pill ${s.status==='active'?'on':'off'}">${h(s.status)}</span></td>
      <td>${s.auto_renew ? 'Yes' : 'No'}</td><td class="mono">${day(s.expires_at)}</td><td>${money(s.price_usd)}</td></tr>`).join('')
     || '<tr><td colspan="6" class="empty">No subscriptions yet. They appear here as soon as the first purchase clears.</td></tr>';
-
+ 
   loadUsers();
 }
-
+ 
 function togglePremiumFilter(){
   premiumOnly = !premiumOnly;
   document.getElementById('premBtn').textContent = 'Premium only: ' + (premiumOnly ? 'on' : 'off');
   loadUsers();
 }
-
+ 
 async function loadUsers(){
   const q = encodeURIComponent(document.getElementById('userSearch').value.trim());
   const data = await api(`/admin/users?q=${q}&premium_only=${premiumOnly}&limit=50`);
@@ -245,12 +257,12 @@ async function loadUsers(){
      <td><button onclick="toggleActive('${u.id}')">${u.is_active?'Disable':'Enable'}</button></td></tr>`).join('')
     || '<tr><td colspan="7" class="empty">No accounts match that search.</td></tr>';
 }
-
+ 
 async function toggleActive(id){
   await api(`/admin/users/${id}/toggle-active`, {method:'POST'});
   loadUsers();
 }
-
+ 
 if (token) showApp();
 </script>
 </body>
