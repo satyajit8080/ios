@@ -4,27 +4,36 @@ options:
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
-
+ 
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    DEVELOPMENT_TEAM: ABCDE12345
+    # Manual signing needs an explicit team. Codemagic's `use-profiles` fills in
+    # PROVISIONING_PROFILE_SPECIFIER and CODE_SIGN_IDENTITY, but it does not set
+    # DEVELOPMENT_TEAM, and without it xcodebuild reports "requires a
+    # provisioning profile" even when a valid profile is installed.
+    DEVELOPMENT_TEAM: 8L42VAKP6D
+    CODE_SIGN_STYLE: Manual
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     SWIFT_STRICT_CONCURRENCY: complete
-
+ 
 packages:
   FirebaseSDK:
     url: https://github.com/firebase/firebase-ios-sdk
     from: "11.6.0"
-
+ 
 targets:
   AIWeightLossCoach:
     type: application
     platform: iOS
     sources:
       - path: AIWeightLossCoach
+        excludes:
+          # StoreKit configuration is a local testing artefact. Shipping it
+          # inside the .app bundle is pointless and invites validation warnings.
+          - "Resources/Products.storekit"
     dependencies:
       - package: FirebaseSDK
         product: FirebaseCore
@@ -37,7 +46,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.awlc.coach
         INFOPLIST_FILE: AIWeightLossCoach/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: AIWeightLossCoach/Resources/AIWeightLossCoach.entitlements
-        TARGETED_DEVICE_FAMILY: "1,2"
+        # iPhone only. An iPad build must support all four orientations unless
+        # it requires full screen, and this UI is portrait-only by design, so
+        # declaring iPad support fails archive validation.
+        TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_BITCODE: NO
     entitlements:
       path: AIWeightLossCoach/Resources/AIWeightLossCoach.entitlements
