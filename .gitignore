@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.env
+.env.production
+.venv/
+secrets/
+*.sqlite
+test.db
+.DS_Store
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/build/
+DerivedData/

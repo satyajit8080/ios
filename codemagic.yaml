@@ -1,0 +1,146 @@
+workflows:
+  ios-testflight:
+    name: AI Weight Loss Coach - TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      app_store_connect: AWLC_API_KEY
+
+    environment:
+      groups:
+        - awlc_secrets
+      vars:
+        XCODE_PROJECT: "ios/AIWeightLossCoach.xcodeproj"
+        XCODE_SCHEME: "AIWeightLossCoach"
+        BUNDLE_ID: "com.awlc.coach"
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          brew install xcodegen
+
+      - name: Write GoogleService-Info.plist
+        script: |
+          # Stored as a base64 environment variable so the real Firebase
+          # credentials never sit in the repository.
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST" ]; then
+            echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode \
+              > ios/AIWeightLossCoach/Resources/GoogleService-Info.plist
+            echo "Wrote GoogleService-Info.plist"
+          else
+            echo "GOOGLE_SERVICE_INFO_PLIST not set - using the repo template."
+          fi
+
+      - name: Point the app at the live backend
+        script: |
+          # API_BASE_URL is an environment variable in Codemagic so the same
+          # commit can be built against staging or production.
+          if [ -n "$API_BASE_URL" ]; then
+            /usr/libexec/PlistBuddy -c "Set :API_BASE_URL $API_BASE_URL" \
+              ios/AIWeightLossCoach/Resources/Info.plist
+            echo "API_BASE_URL set to $API_BASE_URL"
+          fi
+
+      - name: Generate the Xcode project
+        script: |
+          cd ios
+          xcodegen generate
+
+      - name: Set build number
+        script: |
+          cd ios
+          agvtool new-version -all $(($(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID") + 1))
+
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+      - name: Add certificates to keychain
+        script: |
+          keychain initialize
+          keychain add-certificates
+
+      - name: Apply provisioning profiles
+        script: |
+          xcode-project use-profiles
+
+      - name: Build the IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - build/ios/xcarchive/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
+      email:
+        recipients:
+          - $NOTIFY_EMAIL
+        notify:
+          success: true
+          failure: true
+
+  backend-tests:
+    name: Backend tests
+    instance_type: linux_x2
+    max_build_duration: 20
+
+    triggering:
+      events:
+        - push
+        - pull_request
+
+    services:
+      postgres:
+      redis:
+
+    environment:
+      vars:
+        DATABASE_URL: "postgresql+psycopg://postgres:postgres@localhost:5432/postgres"
+        REDIS_URL: "redis://localhost:6379/0"
+        SECRET_KEY: "ci-only-not-a-real-secret"
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd backend
+          pip install -r requirements.txt
+          pip install ruff pytest
+
+      - name: Lint
+        script: |
+          cd backend
+          ruff check app tests
+
+      - name: Migrations up and down
+        script: |
+          cd backend
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Tests
+        script: |
+          cd backend
+          pytest -q
