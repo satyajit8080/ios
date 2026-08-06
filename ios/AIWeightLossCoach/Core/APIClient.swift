@@ -267,7 +267,8 @@ extension ISO8601DateFormatter {
 }
  
 extension DateFormatter {
-    nonisolated(unsafe) static let awlcDay: DateFormatter = {
+    // DateFormatter is Sendable on this SDK, so no annotation is needed here.
+    static let awlcDay: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
