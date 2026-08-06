@@ -1,8 +1,8 @@
 import SwiftUI
-
+ 
 struct RootView: View {
     @Environment(SessionStore.self) private var session
-
+ 
     var body: some View {
         Group {
             switch session.phase {
@@ -16,60 +16,90 @@ struct RootView: View {
                 MainTabView()
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: session.phase)
+        .dsAnimation(DS.Motion.standard, value: session.phase)
     }
 }
-
+ 
+// MARK: - Launch
+ 
 struct LaunchView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+ 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Palette.pineDeep, Palette.pine],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-            VStack(spacing: 16) {
+            DS.Colors.brandGradient
+                .ignoresSafeArea()
+ 
+            VStack(spacing: DS.Space.xl) {
                 Image(systemName: "figure.walk.motion")
-                    .font(.system(size: 44, weight: .light))
+                    .font(.system(size: 46, weight: .light))
                     .foregroundStyle(.white)
-                ProgressView().tint(.white)
+                    .scaleEffect(pulse ? 1.06 : 0.94)
+                    .opacity(pulse ? 1 : 0.7)
+ 
+                ProgressView()
+                    .tint(.white)
             }
+            .accessibilityElement()
             .accessibilityLabel("Loading")
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
         }
     }
 }
-
+ 
+// MARK: - Main tabs
+ 
 struct MainTabView: View {
     @Environment(SessionStore.self) private var session
     @Environment(HealthKitManager.self) private var health
     @Environment(PushManager.self) private var push
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selection = 0
+ 
+    @State private var selection = Tab.today.rawValue
     @State private var showPaywall = false
-
+    @State private var showScan = false
+ 
+    private enum Tab: String {
+        case today, food, scan, coach, progress, you
+    }
+ 
+    // Six slots: five destinations plus the raised scan action. The scan
+    // button presents a sheet rather than switching tabs, so it never
+    // becomes a place you can get stuck.
+    private let tabs: [DSTab] = [
+        DSTab(id: Tab.today.rawValue, title: "Today", icon: "square.grid.2x2", selectedIcon: "square.grid.2x2.fill"),
+        DSTab(id: Tab.food.rawValue, title: "Food", icon: "fork.knife", selectedIcon: "fork.knife"),
+        DSTab(id: Tab.scan.rawValue, title: "Scan", icon: "camera.viewfinder", selectedIcon: "camera.viewfinder"),
+        DSTab(id: Tab.coach.rawValue, title: "Coach", icon: "sparkles", selectedIcon: "sparkles"),
+        DSTab(id: Tab.progress.rawValue, title: "Progress", icon: "chart.xyaxis.line", selectedIcon: "chart.xyaxis.line"),
+        DSTab(id: Tab.you.rawValue, title: "You", icon: "person", selectedIcon: "person.fill")
+    ]
+ 
     var body: some View {
-        TabView(selection: $selection) {
-            DashboardView(showPaywall: $showPaywall)
-                .tabItem { Label("Today", systemImage: "square.grid.2x2") }
-                .tag(0)
-
-            FoodLogView(showPaywall: $showPaywall)
-                .tabItem { Label("Food", systemImage: "fork.knife") }
-                .tag(1)
-
-            CoachView(showPaywall: $showPaywall)
-                .tabItem { Label("Coach", systemImage: "bubble.left.and.text.bubble.right") }
-                .tag(2)
-
-            ProgressHubView()
-                .tabItem { Label("Progress", systemImage: "chart.xyaxis.line") }
-                .tag(3)
-
-            SettingsView(showPaywall: $showPaywall)
-                .tabItem { Label("You", systemImage: "person.crop.circle") }
-                .tag(4)
+        ZStack(alignment: .bottom) {
+            DS.Colors.backgroundGradient
+                .ignoresSafeArea()
+ 
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+ 
+            DSTabBar(tabs: tabs, selection: $selection, centerIndex: 2)
+                .padding(.bottom, DS.Space.sm)
         }
         .sheet(isPresented: $showPaywall) { PaywallView() }
+        .sheet(isPresented: $showScan) { ScanMealView() }
+        .onChange(of: selection) { _, new in
+            // The centre button is an action, not a destination.
+            guard new == Tab.scan.rawValue else { return }
+            showScan = true
+            selection = Tab.today.rawValue
+        }
         .task {
             if health.status == .notRequested { await health.requestAuthorization() }
             await health.syncAll()
@@ -77,16 +107,35 @@ struct MainTabView: View {
             if !push.isAuthorized { await push.requestAuthorization() }
         }
         .onChange(of: scenePhase) { _, phase in
-            // Health samples can land while the app is backgrounded; pick them up on return.
+            // Health samples can land while the app is backgrounded; pick
+            // them up on return.
             if phase == .active {
                 Task { await health.syncAll() }
             }
         }
     }
+ 
+    @ViewBuilder
+    private var content: some View {
+        switch Tab(rawValue: selection) ?? .today {
+        case .today, .scan:
+            DashboardView(showPaywall: $showPaywall)
+        case .food:
+            FoodLogView(showPaywall: $showPaywall)
+        case .coach:
+            CoachView(showPaywall: $showPaywall)
+        case .progress:
+            ProgressHubView()
+        case .you:
+            SettingsView(showPaywall: $showPaywall)
+        }
+    }
 }
-
+ 
+// MARK: - Progress hub
+ 
 struct ProgressHubView: View {
-    enum Tab: String, CaseIterable, Identifiable {
+    enum Section: String, CaseIterable, Identifiable {
         case weight = "Weight"
         case forecast = "Forecast"
         case steps = "Steps"
@@ -95,37 +144,26 @@ struct ProgressHubView: View {
         case trends = "Trends"
         var id: String { rawValue }
     }
-
-    @State private var tab: Tab = .weight
-
+ 
+    @State private var section: Section = .weight
+ 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Tab.allCases) { item in
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) { tab = item }
-                            } label: {
-                                Text(item.rawValue)
-                                    .font(.subheadline.weight(tab == item ? .semibold : .regular))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        Capsule().fill(
-                                            tab == item ? Palette.pine : Color(.secondarySystemGroupedBackground)
-                                        )
-                                    )
-                                    .foregroundStyle(tab == item ? .white : .primary)
+                    HStack(spacing: DS.Space.sm) {
+                        ForEach(Section.allCases) { item in
+                            DSChip(title: item.rawValue, isSelected: section == item) {
+                                withAnimation(DS.Motion.snappy) { section = item }
                             }
-                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, DS.Space.gutter)
+                    .padding(.vertical, DS.Space.xs)
                 }
-                .padding(.bottom, 10)
-
-                switch tab {
+                .padding(.bottom, DS.Space.sm)
+ 
+                switch section {
                 case .weight: WeightView()
                 case .forecast: PredictionView()
                 case .steps: StepsView()
@@ -136,7 +174,7 @@ struct ProgressHubView: View {
             }
             .navigationTitle("Progress")
             .navigationBarTitleDisplayMode(.inline)
-            .background(Color(.systemGroupedBackground))
+            .background(DS.Colors.background)
         }
     }
 }
