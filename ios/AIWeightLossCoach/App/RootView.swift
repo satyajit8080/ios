@@ -93,7 +93,7 @@ struct MainTabView: View {
                 .padding(.bottom, DS.Space.sm)
         }
         .sheet(isPresented: $showPaywall) { PaywallView() }
-        .sheet(isPresented: $showScan) { ScanMealView() }
+        .sheet(isPresented: $showScan) { ScanMealView(showPaywall: $showPaywall) }
         .onChange(of: selection) { _, new in
             // The centre button is an action, not a destination.
             guard new == Tab.scan.rawValue else { return }
