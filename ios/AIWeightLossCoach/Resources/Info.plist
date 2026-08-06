@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Weight Coach</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Reads your steps, walking distance and body weight so your dashboard and streaks stay accurate without manual entry.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Writes the weights and water you log here back to Health, so your other apps stay in sync.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Takes photos of your meals so the coach can estimate calories and macros.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Lets you pick an existing meal photo to analyse.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Used only to measure which features help people reach their goals.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>API_BASE_URL</key>
+	<string>https://api.awlc.app/api/v1</string>
+</dict>
+</plist>
