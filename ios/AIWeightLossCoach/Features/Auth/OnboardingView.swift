@@ -344,7 +344,7 @@ struct OnboardingView: View {
  
     @ViewBuilder
     private func stepScaffold<Content: View>(
-        title: String, subtitle: String, @ViewBuilder content: () -> Content
+        title: String, subtitle: String, @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: DS.Space.xl) {
