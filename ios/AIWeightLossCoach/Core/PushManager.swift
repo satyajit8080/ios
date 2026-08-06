@@ -14,12 +14,12 @@ final class PushManager: NSObject {
     private let center = UNUserNotificationCenter.current()
  
     func configureFirebase() {
-        if FirebaseApp.app() == nil {
-            FirebaseApp.configure()
-        }
-        Messaging.messaging().delegate = self
-        center.delegate = self
-    }
+    // Set this first — local water reminders work with or without Firebase.
+    center.delegate = self
+
+    guard FirebaseBootstrap.configure() else { return }
+    Messaging.messaging().delegate = self
+}
  
     func requestAuthorization() async {
         do {
